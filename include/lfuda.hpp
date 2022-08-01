@@ -51,6 +51,27 @@ template <typename T, typename KeyT = int> class lfuda_t
 
     bool full () const { return size_ == capacity_; }
 
-    template <typename F> bool lookup_update (KeyT key, F slow_get_page) {}
+    template <typename F> bool lookup_update (KeyT key, F slow_get_page)
+    {
+        auto hit = table_.find (key);
+        if ( hit == table_.end () )
+        {
+            if ( full () )
+            {
+                erase (key, slow_get_page);
+            }
+            insert ();
+
+            return false;
+        }
+        auto found = hit->second;
+        promote (found);
+
+        return true;
+    }
+
+    // erase ();
+    // insert();
+    // promote();
 };
 }   // namespace cache
