@@ -26,7 +26,7 @@ template <typename T, typename KeyT = int> class lfuda_t
 
       public:
         local_node_t (T data, freq_t freq, KeyT key) : key_ (key), freq_ (freq), data_ (data) {}
-        local_node_t (T data, freq_t freq, KeyT key, freq_node_it pos)
+        local_node_t (T data, freq_t freq, KeyT key, freq_node_it_t pos)
             : key_ (key), freq_ (freq), data_ (data), freq_list_ (pos)
         {
         }
@@ -49,10 +49,10 @@ template <typename T, typename KeyT = int> class lfuda_t
 
     size_t capacity_ = 0;
     size_t size_     = 0;
-    size_t age_;
+    size_t age_      = 1;
 
   public:
-    explicit lfuda_t (size_t cap) : capacity_ (cap) {}
+    explicit lfuda_t (size_t cap) : capacity_ (cap), size_ (0) {}
 
     size_t size () const { return size_; }
     size_t age () const { return age_; }
@@ -101,13 +101,14 @@ template <typename T, typename KeyT = int> class lfuda_t
 
     template <typename F> void insert (KeyT key, F slow_get_page)
     {
-        // insert in rb tree or find local_list with freq == 1
-        freq_node_it_t ins_list_it;
-        if ( rb_tree_.empty () || rb_tree_.begin ()->second.begin ()->freq () != age_ )
-            ins_list_it = rb_tree_.emplace (age_, local_list_t);   // log(N)
-        ins_list_it->emplace_front (local_node_t (slow_get_page (key), age_, key, ins_list_it));
+        // insert in rb tree or find local_list with freq == age_
+        freq_node_it_t ins_list_it = rb_tree_.find (age_);   // log(N)
+        if ( rb_tree_.empty () || ins_list_it == rb_tree_.end () )
+            ins_list_it = rb_tree_.emplace (age_, local_list_t ()).first;   // log(N)
+        local_list_t &ins_list = ins_list_it->second;
+        ins_list.emplace_front (local_node_t (slow_get_page (key), age_, key, ins_list_it));
         // insert request into table_ and rb_tree
-        table_[key] = ins_list_it->begin ();
+        table_[key] = ins_list.begin ();
         size_++;
     }
 
@@ -119,17 +120,18 @@ template <typename T, typename KeyT = int> class lfuda_t
         auto &next_list               = next_list_it->second;
 
         // find new freq list for promoted local node
-        auto new_freq = age_ + found->freq () + 1;
-        if ( next_list_it == rb_tree_.end () || next_list.front ().freq () != new_freq )
-            rb_tree_.emplace (new_freq);   // wrong
-        local_list_t &next_freq_list = std::next (parent_list_it)->second;   // wrong
+        auto new_freq              = age_ + found->freq () + 1;
+        freq_node_it_t ins_list_it = next_list_it;
+        if ( next_list_it == rb_tree_.end () || next_list_it->first != new_freq )
+            ins_list_it = rb_tree_.emplace (new_freq, local_list_t ()).first;   // log(N)
+        local_list_t &next_freq_list = ins_list_it->second;
 
         // actually promote
         next_freq_list.splice (next_freq_list.begin (), parent_list, found);
 
         // remove if empty
         if ( parent_list.empty () )
-            rb_tree_.erase (freq);
+            rb_tree_.erase (parent_list_it->first);
     }
 };
 }   // namespace cache
