@@ -16,6 +16,7 @@ template <typename T, typename KeyT = int> class lfuda_t
     //=====================================local_node_t=========================================
     class local_node_t
     {
+      public:
         using local_list_t    = typename std::list<local_node_t>;
         using local_list_it_t = typename local_list_t::iterator;
         using freq_node_it_t  = typename std::map<freq_t, local_list_t>::iterator;
@@ -25,23 +26,13 @@ template <typename T, typename KeyT = int> class lfuda_t
         freq_t freq_;
         freq_node_it_t freq_list_;
 
-      public:
         local_node_t (T data, freq_t freq, KeyT key) : key_ (key), freq_ (freq), data_ (data) {}
         local_node_t (T data, freq_t freq, KeyT key, freq_node_it_t pos)
             : key_ (key), freq_ (freq), data_ (data), freq_list_ (pos)
         {
         }
-
-        T data () const { return data_; }
-        KeyT key () const { return key_; }
-        freq_t freq () const { return freq_; }
-        freq_node_it_t freq_node () { return freq_list_; }
-
-        freq_t set_freq (freq_t freq) { return freq_ = freq; }
-        freq_t advance_freq () { return freq_++; }
-        void set_freq_node (freq_node_it_t freq_node) { freq_list_ = freq_node; }
-        freq_node_it_t &freq_list () { return freq_list_; }
     };
+
     using local_list_t    = typename std::list<local_node_t>;
     using local_list_it_t = typename local_list_t::iterator;
     using freq_node_it_t  = typename std::map<freq_t, local_list_t>::iterator;
@@ -50,17 +41,16 @@ template <typename T, typename KeyT = int> class lfuda_t
     std::map<freq_t, local_list_t> rb_tree_;
 
     size_t capacity_ = 0;
-    size_t size_     = 0;
     size_t age_      = 0;
 
   public:
-    explicit lfuda_t (size_t cap) : capacity_ (cap), size_ (0) {}
+    lfuda_t (size_t cap) : capacity_ (cap) {}
 
-    size_t size () const { return size_; }
+    size_t size () const { return table_.size (); }
     size_t age () const { return age_; }
     size_t capacity () const { return capacity_; }
 
-    bool full () const { return size_ == capacity_; }
+    bool full () const { return table_.size () == capacity_; }
 
     template <typename F> bool lookup_update (KeyT key, F slow_get_page)
     {
@@ -88,14 +78,13 @@ template <typename T, typename KeyT = int> class lfuda_t
         auto last_local_list_it = rb_tree_.begin ();
         auto &last_local_list   = last_local_list_it->second;
         auto freq               = last_local_list_it->first;
-        auto to_erase_key       = last_local_list.back ().key ();
+        auto to_erase_key       = last_local_list.back ().key_;
         assert (!last_local_list.empty ());
 
         // erase
         table_.erase (to_erase_key);
         last_local_list.pop_back ();
         age_ = freq;
-        size_--;
 
         // remove if empty
         if ( last_local_list.empty () && freq != age_ + 1 )
@@ -112,23 +101,22 @@ template <typename T, typename KeyT = int> class lfuda_t
 
         // insert request into table_ and rb_tree
         table_[key] = ins_local_list.begin ();
-        size_++;
     }
 
     void promote (local_list_it_t &found)
     {
-        found->advance_freq ();
-        auto parent_list_it = found->freq_list ();
+        found->freq_++;
+        auto parent_list_it = found->freq_list_;
         auto &parent_list   = parent_list_it->second;
 
         // find new freq list for promoted local node
-        auto new_freq         = age_ + found->freq ();
+        auto new_freq         = age_ + found->freq_;
         auto next_list_it     = rb_tree_.emplace (new_freq, local_list_t ()).first;   // log(N)
         auto &next_local_list = next_list_it->second;
 
         // actually promote
         next_local_list.splice (next_local_list.begin (), parent_list, found);
-        found->set_freq_node (next_list_it);
+        found->freq_list_ = next_list_it;
 
         // remove if empty
         if ( parent_list.empty () )
