@@ -85,14 +85,14 @@ template <typename T, typename KeyT = int> class lfuda_t
     void erase ()
     {
         // find to erase
-        auto last_local_list_it       = rb_tree_.begin ();
-        local_list_t &last_local_list = last_local_list_it->second;
-        auto freq                     = last_local_list_it->first;
-        auto &to_erase                = last_local_list.back ();
+        auto last_local_list_it = rb_tree_.begin ();
+        auto &last_local_list   = last_local_list_it->second;
+        auto freq               = last_local_list_it->first;
+        auto to_erase_key       = last_local_list.back ().key ();
         assert (!last_local_list.empty ());
 
         // erase
-        table_.erase (to_erase.key ());
+        table_.erase (to_erase_key);
         last_local_list.pop_back ();
         age_ = freq;
         size_--;
@@ -105,13 +105,13 @@ template <typename T, typename KeyT = int> class lfuda_t
     template <typename F> void insert (KeyT key, F slow_get_page)
     {
         // insert in rb tree or find local_list with freq == age_ + 1
-        auto init_freq             = age_ + 1;
-        freq_node_it_t ins_list_it = rb_tree_.emplace (init_freq, local_list_t ()).first;   // log(N)
-        local_list_t &ins_list     = ins_list_it->second;
-        ins_list.emplace_front (local_node_t (slow_get_page (key), 1, key, ins_list_it));
+        auto init_freq       = age_ + 1;
+        auto ins_list_it     = rb_tree_.emplace (init_freq, local_list_t ()).first;   // log(N)
+        auto &ins_local_list = ins_list_it->second;
+        ins_local_list.emplace_front (local_node_t (slow_get_page (key), 1, key, ins_list_it));
 
         // insert request into table_ and rb_tree
-        table_[key] = ins_list.begin ();
+        table_[key] = ins_local_list.begin ();
         size_++;
     }
 
@@ -136,5 +136,3 @@ template <typename T, typename KeyT = int> class lfuda_t
     }
 };
 }   // namespace cache
-
-// insert freq_list into local_node
