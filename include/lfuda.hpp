@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <iterator>
 #include <list>
 #include <map>
@@ -49,7 +50,7 @@ template <typename T, typename KeyT = int> class lfuda_t
 
     size_t capacity_ = 0;
     size_t size_     = 0;
-    size_t age_      = 1;
+    size_t age_      = 0;
 
   public:
     explicit lfuda_t (size_t cap) : capacity_ (cap), size_ (0) {}
@@ -87,6 +88,7 @@ template <typename T, typename KeyT = int> class lfuda_t
         local_list_t &last_local_list = last_local_list_it->second;
         auto freq                     = last_local_list_it->first;
         auto &to_erase                = last_local_list.back ();
+        assert (!last_local_list.empty ());
 
         // erase
         table_.erase (to_erase.key ());
@@ -95,18 +97,18 @@ template <typename T, typename KeyT = int> class lfuda_t
         size_--;
 
         // remove if empty
-        if ( last_local_list.empty () && freq != age_ )
+        if ( last_local_list.empty () && freq != age_ + 1 )
             rb_tree_.erase (to_erase.freq ());   // log(N)
     }
 
     template <typename F> void insert (KeyT key, F slow_get_page)
     {
-        // insert in rb tree or find local_list with freq == age_
-        freq_node_it_t ins_list_it = rb_tree_.find (age_);   // log(N)
+        // insert in rb tree or find local_list with freq == age_ + 1
+        freq_node_it_t ins_list_it = rb_tree_.find (age_ + 1);   // log(N)
         if ( rb_tree_.empty () || ins_list_it == rb_tree_.end () )
-            ins_list_it = rb_tree_.emplace (age_, local_list_t ()).first;   // log(N)
+            ins_list_it = rb_tree_.emplace (age_ + 1, local_list_t ()).first;   // log(N)
         local_list_t &ins_list = ins_list_it->second;
-        ins_list.emplace_front (local_node_t (slow_get_page (key), age_, key, ins_list_it));
+        ins_list.emplace_front (local_node_t (slow_get_page (key), age_ + 1, key, ins_list_it));
         // insert request into table_ and rb_tree
         table_[key] = ins_list.begin ();
         size_++;
@@ -114,20 +116,20 @@ template <typename T, typename KeyT = int> class lfuda_t
 
     void promote (local_list_it_t &found)
     {
-        freq_node_it_t parent_list_it = found->freq_list ();
-        freq_node_it_t next_list_it   = std::next (parent_list_it);
-        auto &parent_list             = parent_list_it->second;
-        auto &next_list               = next_list_it->second;
+        auto parent_list_it = found->freq_list ();
+        auto &parent_list   = parent_list_it->second;
 
         // find new freq list for promoted local node
-        auto new_freq              = age_ + found->freq () + 1;
-        freq_node_it_t ins_list_it = next_list_it;
+        auto new_freq     = age_ + found->freq () + 1;
+        auto next_list_it = rb_tree_.lower_bound (new_freq);   // log(N)
         if ( next_list_it == rb_tree_.end () || next_list_it->first != new_freq )
-            ins_list_it = rb_tree_.emplace (new_freq, local_list_t ()).first;   // log(N)
-        local_list_t &next_freq_list = ins_list_it->second;
+            next_list_it = rb_tree_.emplace_hint (next_list_it, new_freq, local_list_t ());
+        auto &next_local_list = next_list_it->second;
 
         // actually promote
-        next_freq_list.splice (next_freq_list.begin (), parent_list, found);
+        next_local_list.splice (next_local_list.begin (), parent_list, found);
+        found->set_freq_node (next_list_it);
+        found->set_freq (new_freq);
 
         // remove if empty
         if ( parent_list.empty () )
