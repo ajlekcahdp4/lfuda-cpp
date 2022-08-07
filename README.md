@@ -8,6 +8,6 @@ make
 ```
 ## How to run tests
 ```
-cd build/test/
+cd build/
 ctest
 ```
