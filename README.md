@@ -11,3 +11,8 @@ make
 cd build/
 ctest
 ```
+## How to compare number of hits of lfuda and belady (ideal cache) 
+```
+cd test
+./compare.sh
+```
