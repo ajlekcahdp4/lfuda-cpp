@@ -9,12 +9,7 @@
 # ----------------------------------------------------------------------------
 ##
 from cgi import test
-import random
-import sys
-import getopt
-import os
-
-from numpy import unsignedinteger
+import random, sys, getopt, os
 
 usage_string = "gentest.py -n <num> -o output"
 
