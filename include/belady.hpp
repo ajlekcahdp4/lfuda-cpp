@@ -22,13 +22,14 @@ namespace cache
 {
 template <typename T, typename iterator_t> class ideal_cache_t
 {
-    using occurence_map = typename std::unordered_map<T, std::deque<size_t>>;
+    using occurence_map = typename std::unordered_map<T, std::deque<int>>;
 
     occurence_map occur_map_;
-    std::vector<T> cvec_;
+    std::map<int, T> cmap_;
     std::unordered_set<T> inserted_set_;
     size_t capacity_;
-    size_t size_ = 0;
+    size_t test_size_ = 0;
+    size_t size_      = 0;
 
     void fill (iterator_t begin, iterator_t end)
     {
@@ -38,7 +39,7 @@ template <typename T, typename iterator_t> class ideal_cache_t
         size_t step {};
         for ( ; begin != end; begin++, step++ )
         {
-            auto &ins_que = occur_map_.emplace (*begin, std::deque<size_t> {}).first->second;
+            auto &ins_que = occur_map_.emplace (*begin, std::deque<int> ()).first->second;
             ins_que.push_back (step);
         }
     }
@@ -46,9 +47,8 @@ template <typename T, typename iterator_t> class ideal_cache_t
   public:
     bool full () const { return size_ == capacity_; }
 
-    ideal_cache_t (size_t m, iterator_t begin, iterator_t end) : capacity_ (m)   // O(n)
+    ideal_cache_t (size_t m, size_t n, iterator_t begin, iterator_t end) : capacity_ (m), test_size_ (n)   // O(n)
     {
-        cvec_.reserve (m);
         fill (begin, end);
     }
 
@@ -57,10 +57,9 @@ template <typename T, typename iterator_t> class ideal_cache_t
         auto found = inserted_set_.find (to_insert);
         if ( found == inserted_set_.end () )
         {
-            auto insert_ind = -1;
             if ( full () )
-                insert_ind = erase ();
-            insert (insert_ind, to_insert);
+                erase ();
+            insert (to_insert);
             return false;
         }
         promote (to_insert);
@@ -68,42 +67,26 @@ template <typename T, typename iterator_t> class ideal_cache_t
     }
 
   private:
-    size_t erase ()
+    void erase ()
     {
-        std::pair<size_t, size_t> to_erase {0, 0};
-
-        for ( auto i = 0; i < cvec_.size (); i++ )
-        {
-            auto found = occur_map_.find (cvec_[i]);
-            if ( found == occur_map_.end () )
-            {
-                inserted_set_.erase (cvec_[i]);
-                size_--;
-                return i;
-            }
-            auto found_soon = found->second[0];
-            if ( found_soon > to_erase.first )
-            {
-                to_erase.first  = found_soon;
-                to_erase.second = i;
-            }
-        }
-        assert (to_erase.second <= cvec_.size ());
-        inserted_set_.erase (cvec_[to_erase.second]);
+        auto to_erase_it = std::prev (cmap_.end ());
+        inserted_set_.erase (to_erase_it->second);
+        cmap_.erase (to_erase_it);   // log (N)
         size_--;
 
-        return to_erase.second;
+        assert (cmap_.size () == size_);
     }
 
-    void insert (size_t ind, const T &to_insert)
+    void insert (const T &to_insert)
     {
-        if ( ind == -1 )   // to optimize
-            cvec_.push_back (to_insert);
-        else
-            cvec_[ind] = to_insert;
-        inserted_set_.insert (to_insert);
-        promote (to_insert);
-        size_++;
+        auto new_soon = promote_que (to_insert);
+        if ( new_soon )   // if promote_que returned 0, than we don't need to insert
+        {
+            inserted_set_.insert (to_insert);
+            cmap_.insert ({new_soon, to_insert});
+            size_++;
+        }
+        assert (cmap_.size () == size_);
     }
 
     void promote (const T &to_promote)
@@ -111,18 +94,43 @@ template <typename T, typename iterator_t> class ideal_cache_t
         auto found = occur_map_.find (to_promote);
         assert (found != occur_map_.end ());
         auto &que = found->second;
+
+        cmap_.erase (que.front ());
+
         que.pop_front ();
         if ( que.empty () )
+        {
             occur_map_.erase (to_promote);
+            size_--;
+        }
+        else
+            cmap_.insert ({que.front (), to_promote});
+        assert (cmap_.size () == size_);
+    }
+
+    size_t promote_que (const T &to_promote)
+    {
+        auto found = occur_map_.find (to_promote);
+        assert (found != occur_map_.end ());
+        auto &que = found->second;
+
+        que.pop_front ();
+        if ( que.empty () )
+        {
+            occur_map_.erase (to_promote);
+            return 0;
+        }
+        return que.front ();
     }
 };
 
-template <typename T, typename iterator_t> size_t get_best_hits_count (size_t size, iterator_t begin, iterator_t end)
+template <typename T, typename iterator_t>
+size_t get_best_hits_count (size_t size, size_t len, iterator_t begin, iterator_t end)
 {
     if ( !size || begin == end )
         throw std::invalid_argument ("Wrong argument(s) in get_best_hits_count ()");
 
-    ideal_cache_t<T, iterator_t> cache {size, begin, end};
+    ideal_cache_t<T, iterator_t> cache {size, len, begin, end};
 
     size_t hits {};
     for ( ; begin != end; begin++ )

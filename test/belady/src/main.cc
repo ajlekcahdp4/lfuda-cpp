@@ -24,6 +24,6 @@ int main ()
         vec.push_back (temp);
     }
 
-    auto hits = cache::get_best_hits_count<int> (m, vec.begin (), vec.end ());
+    auto hits = cache::get_best_hits_count<int> (m, n, vec.begin (), vec.end ());
     std::cout << hits << std::endl;
 }
